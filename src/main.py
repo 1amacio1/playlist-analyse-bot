@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def main():
-    url = "https://music.yandex.ru/users/kadkini/playlists/1002?ref_id=F3493709-2075-48D5-9264-D80FF61A7684&utm_medium=copy_link"
+    url = input()
 
     owner, kind = extract_from_url(url)
 
