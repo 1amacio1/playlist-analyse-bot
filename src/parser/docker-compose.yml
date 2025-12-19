@@ -1,0 +1,25 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: afisha_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: afisha_db
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - afisha_network
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+
+networks:
+  afisha_network:
+    driver: bridge
+
