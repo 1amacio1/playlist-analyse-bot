@@ -15,7 +15,7 @@ import logging
 import time
 import random
 from datetime import datetime
-from .config import config
+from src.config.settings import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,11 +31,31 @@ class AfishaSeleniumParser:
 
     def start(self):
         """Start Chrome with undetected-chromedriver"""
-        logger.info("Starting Chromium with Selenium...")
+        logger.info("Starting Chrome with undetected-chromedriver...")
 
-        options = Options()
+        import undetected_chromedriver as uc
         
-        options.binary_location = '/usr/bin/chromium'
+        options = uc.ChromeOptions()
+
+        chrome_paths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/usr/bin/chromium',
+            '/usr/bin/google-chrome'
+        ]
+        
+        chrome_binary = None
+        import os
+        for path in chrome_paths:
+            if os.path.exists(path):
+                chrome_binary = path
+                logger.info(f"Found Chrome at: {chrome_binary}")
+                break
+        
+        if chrome_binary:
+            options.binary_location = chrome_binary
+        else:
+            logger.warning("Chrome binary not found, using default")
         
         options.add_argument(f'user-agent={config.USER_AGENT}')
         options.add_argument('--window-size=1920,1080')
@@ -43,26 +63,25 @@ class AfishaSeleniumParser:
         
         if self.headless:
             options.add_argument('--headless=new')
-        
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--no-sandbox')
+
         options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--no-sandbox')
         options.add_argument('--disable-gpu')
-        options.add_argument('--remote-debugging-port=9222')
+
         
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
+        prefs = {
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.default_content_settings.popups": 0,
+        }
+        options.add_experimental_option("prefs", prefs)
         
         try:
-            service = Service('/usr/bin/chromedriver')
-            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver = uc.Chrome(options=options, version_main=None, use_subprocess=True)
             self.driver.set_page_load_timeout(60)
             
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            logger.info("Chromium started successfully")
+            logger.info("Chrome started successfully")
         except Exception as e:
-            logger.error(f"Failed to start Chromium: {e}")
+            logger.error(f"Failed to start Chrome: {e}")
             raise
 
     def close(self):
@@ -346,13 +365,21 @@ class AfishaSeleniumParser:
         except:
             return False
 
-    def wait_for_captcha_solution(self, max_wait_seconds=120):
+    def wait_for_captcha_solution(self, max_wait_seconds=120, skip_if_headless=True):
         """
         Wait for user to solve CAPTCHA manually
-        Returns True if CAPTCHA was solved, False if timeout
+        Returns True if CAPTCHA was solved, False if timeout or skipped
         """
         if not self.check_for_captcha():
             return True  # No CAPTCHA, continue
+
+        # Если headless режим и опция пропуска включена - просто пропускаем
+        if skip_if_headless and self.headless:
+            logger.warning("=" * 60)
+            logger.warning("🔴 CAPTCHA ОБНАРУЖЕНА (headless режим)")
+            logger.warning("⏭️  Пропускаю страницу с CAPTCHA")
+            logger.warning("=" * 60)
+            return False  # Пропускаем страницу
 
         logger.warning("=" * 60)
         logger.warning("🔴 CAPTCHA ОБНАРУЖЕНА!")
@@ -364,28 +391,25 @@ class AfishaSeleniumParser:
 
         import time
         start_time = time.time()
-        check_interval = 2  # Проверять каждые 2 секунды
+        check_interval = 2
 
         while time.time() - start_time < max_wait_seconds:
-            # Проверить, исчезла ли CAPTCHA
             if not self.check_for_captcha():
                 elapsed = int(time.time() - start_time)
                 logger.info("=" * 60)
                 logger.info(f"✅ CAPTCHA решена за {elapsed} секунд!")
                 logger.info("🚀 Продолжаю парсинг...")
                 logger.info("=" * 60)
-                time.sleep(2)  # Небольшая пауза после решения
+                time.sleep(2)
                 return True
 
-            # Показать прогресс
             elapsed = int(time.time() - start_time)
             remaining = max_wait_seconds - elapsed
-            if elapsed % 10 == 0:  # Каждые 10 секунд
+            if elapsed % 10 == 0:
                 logger.info(f"⏳ Ожидание... Осталось ~{remaining} сек")
 
             time.sleep(check_interval)
 
-        # Таймаут
         logger.error("=" * 60)
         logger.error(f"⏰ Таймаут {max_wait_seconds} секунд истек")
         logger.error("❌ CAPTCHA не была решена")
@@ -397,11 +421,11 @@ class AfishaSeleniumParser:
         events = []
 
         try:
-            self.human_like_delay(3, 5)
+            self.human_like_delay(5, 8)  # Увеличиваем задержку
 
             # Check for CAPTCHA and wait for solution
             if self.check_for_captcha():
-                # Save screenshot before waiting
+                # Сохраняем скриншот
                 try:
                     import os
                     from pathlib import Path
@@ -417,9 +441,21 @@ class AfishaSeleniumParser:
                 except Exception as e:
                     logger.debug(f"Could not save screenshot: {e}")
 
-                # Wait for user to solve CAPTCHA (120 seconds = 2 minutes)
-                if not self.wait_for_captcha_solution(max_wait_seconds=120):
-                    logger.error(f"Cannot continue with category: {category}")
+                # В headless режиме пробуем перезагрузить страницу после задержки
+                if self.headless:
+                    logger.warning("CAPTCHA detected in headless mode, waiting and retrying...")
+                    time.sleep(10)  # Ждем 10 секунд
+                    self.driver.refresh()  # Перезагружаем страницу
+                    self.human_like_delay(5, 8)
+                    
+                    # Проверяем снова
+                    if self.check_for_captcha():
+                        logger.warning(f"⏭️  Пропускаю страницу с CAPTCHA для категории: {category}")
+                        return events
+                
+                # Wait for user to solve CAPTCHA
+                if not self.wait_for_captcha_solution(max_wait_seconds=120, skip_if_headless=True):
+                    logger.warning(f"⏭️  Пропускаю страницу с CAPTCHA для категории: {category}")
                     return events
 
                 # CAPTCHA solved, continue
@@ -651,7 +687,6 @@ class AfishaSeleniumParser:
                 except:
                     pass
 
-            # Extract date
             date_text = None
             try:
                 date_elements = element.find_elements(By.XPATH,
@@ -666,7 +701,7 @@ class AfishaSeleniumParser:
                         if text and len(text) > 0:
                             date_text = text
                             break
-                
+
                 if not date_text and url:
                     import re
                     date_match = re.search(r'(\d{4}-\d{2}-\d{2})', url)
@@ -702,12 +737,13 @@ class AfishaSeleniumParser:
                     if price_elements:
                         for price_elem in price_elements:
                             text = price_elem.text.strip()
+                            # Проверяем, что это похоже на цену (содержит символ валюты или слово "руб")
                             if text and ('₽' in text or 'руб' in text.lower() or 'от' in text.lower()):
                                 price = text
                                 break
                         if price:
                             break
-                
+
                 if not price:
                     try:
                         ul = element.find_element(By.XPATH, './/ul[@data-test-id="eventCard.eventInfoDetails"]')
@@ -762,9 +798,9 @@ class AfishaSeleniumParser:
             # Check for CAPTCHA and wait for solution
             if self.check_for_captcha():
                 # Wait for user to solve CAPTCHA
-                if not self.wait_for_captcha_solution(max_wait_seconds=120):
-                    logger.error(f"Cannot continue with category: {category['title']}")
-                    return []
+                if not self.wait_for_captcha_solution(max_wait_seconds=120, skip_if_headless=True):
+                    logger.warning("⏭️  Пропускаю страницу с CAPTCHA")
+                    return all_events  # Возвращаем пустой список, пропускаем эту категорию
 
                 # CAPTCHA solved, continue
                 self.human_like_delay(2, 3)
@@ -801,8 +837,8 @@ class AfishaSeleniumParser:
 
                             # Check for CAPTCHA
                             if self.check_for_captcha():
-                                if not self.wait_for_captcha_solution(max_wait_seconds=90):
-                                    logger.warning(f"Skipping selection: {selection['name']}")
+                                if not self.wait_for_captcha_solution(max_wait_seconds=90, skip_if_headless=True):
+                                    logger.warning("⏭️  Пропускаю страницу события с CAPTCHA")
                                     continue
 
                             # Parse events from selection
@@ -880,9 +916,13 @@ class AfishaSeleniumParser:
                     logger.debug(f"Could not save screenshot: {e}")
 
                 # Wait for user to solve CAPTCHA (3 minutes for main page)
-                if not self.wait_for_captcha_solution(max_wait_seconds=180):
+                if not self.wait_for_captcha_solution(max_wait_seconds=180, skip_if_headless=True):
                     logger.error("Cannot continue - CAPTCHA not solved on main page")
-                    return []
+                    # В headless режиме просто продолжаем, возможно получится на других страницах
+                    if self.headless:
+                        logger.warning("⏭️  Продолжаю в headless режиме, несмотря на CAPTCHA на главной странице")
+                    else:
+                        raise Exception("CAPTCHA не решена на главной странице")
 
                 # CAPTCHA solved, continue
                 self.human_like_delay(3, 5)

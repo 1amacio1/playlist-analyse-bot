@@ -12,9 +12,15 @@ class Config:
     MONGO_PASSWORD = os.getenv('MONGO_PASSWORD', 'password123')
     MONGO_DB = os.getenv('MONGO_DB', 'afisha_db')
 
+    # City settings
+    CITY = os.getenv('CITY', 'orenburg')
+    
     # Scraper settings
     HEADLESS = os.getenv('HEADLESS', 'true').lower() == 'true'
-    BASE_URL = 'https://afisha.yandex.ru/orenburg'
+    
+    @property
+    def BASE_URL(self):
+        return f'https://afisha.yandex.ru/{self.CITY}'
 
     # Browser settings - use real Chrome user agent
     USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -33,15 +39,15 @@ class Config:
     CAPTCHA_WAIT_TIMEOUT = int(os.getenv('CAPTCHA_WAIT_TIMEOUT', 120))
 
     # Categories to parse
-    MAX_CATEGORIES = 6 
+    MAX_CATEGORIES = 6
     CATEGORIES_TO_PARSE = ['concert']
 
     # Selections (subcategories)
-    PARSE_SELECTIONS = True 
+    PARSE_SELECTIONS = True
     MAX_SELECTIONS_PER_CATEGORY = 6
 
     # Event details
-    PARSE_EVENT_DETAILS = False 
+    PARSE_EVENT_DETAILS = False
     MAX_EVENTS_FOR_DETAILS = 10
 
     @property
@@ -50,4 +56,3 @@ class Config:
 
 
 config = Config()
-

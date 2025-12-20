@@ -1,6 +1,6 @@
 from typing import List
 
-from clients.music_playlist_client import MusicClient
+from src.services.music_playlist_client import MusicClient
 
 class ServicePlaylist:
     def __init__(self, client: MusicClient):
