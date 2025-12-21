@@ -67,7 +67,13 @@ class AfishaSeleniumParser:
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-gpu')
-
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--remote-debugging-port=9222')
+        options.add_argument('--disable-setuid-sandbox')
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
         
         prefs = {
             "profile.default_content_setting_values.notifications": 2,
@@ -75,8 +81,22 @@ class AfishaSeleniumParser:
         }
         options.add_experimental_option("prefs", prefs)
         
+        import os
+        driver_executable_path = None
+        use_system_driver = os.path.exists('/.dockerenv')
+        if use_system_driver:
+            driver_executable_path = '/usr/bin/chromedriver'
+            logger.info(f"Using system chromedriver: {driver_executable_path}")
+        else:
+            options.add_experimental_option("excludeSwitches", ["enable-logging"])
+        
         try:
-            self.driver = uc.Chrome(options=options, version_main=None, use_subprocess=True)
+            self.driver = uc.Chrome(
+                options=options, 
+                version_main=None, 
+                driver_executable_path=driver_executable_path,
+                use_subprocess=True
+            )
             self.driver.set_page_load_timeout(60)
             
             logger.info("Chrome started successfully")

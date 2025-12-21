@@ -11,14 +11,14 @@ ARTISTS_COLLECTION = "big_artists"
 AFISHA_DB = "afisha_db"
 AFISHA_COLLECTION = "events"
 
-MAX_CONCURRENT = 1  # безопасно для Ticketmaster
+MAX_CONCURRENT = 1 
 
 async def fetch_event(semaphore, artist):
     async with semaphore:
         loop = asyncio.get_event_loop()
         try:
             events = await loop.run_in_executor(None, get_artist_events, artist)
-            await asyncio.sleep(1.1)  # пауза между запросами
+            await asyncio.sleep(1.1)  
             return artist, events
         except Exception as e:
             print(f"Error fetching {artist}: {e}")
