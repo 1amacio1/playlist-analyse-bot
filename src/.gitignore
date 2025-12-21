@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+*.out
+logs/
+
+# Environment variables
+.env
+.env.*
+
+# SQLite / database files
+*.sqlite3
+*.db
+
+# Pytest
+.pytest_cache/
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Docker
+docker-compose.override.yml
+docker-compose.override.yaml
+Dockerfile.override
+
+# MacOS
+.DS_Store
+
+# Node modules (если есть фронтенд)
+node_modules/
+
+# Temporary / cache files
+*.tmp
+*.swp
