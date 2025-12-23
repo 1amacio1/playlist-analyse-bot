@@ -22,7 +22,7 @@ from src.clients.global_concert_client import (
 )
 import asyncio
 
-from bot.utils import (
+from src.bot.utils import (
     remove_duplicate_concerts,
     get_available_cities,
     filter_by_city,
@@ -35,40 +35,8 @@ from bot.utils import (
 
 logger = logging.getLogger(__name__)
 
-CITY_MAPPING = {
-    'москва': 'moscow', 'moscow': 'moscow',
-    'санкт-петербург': 'saint-petersburg', 'saint petersburg': 'saint-petersburg',
-    'st. petersburg': 'saint-petersburg', 'st petersburg': 'saint-petersburg',
-    'спб': 'saint-petersburg', 'питер': 'saint-petersburg',
-    'екатеринбург': 'yekaterinburg', 'yekaterinburg': 'yekaterinburg',
-    'новосибирск': 'novosibirsk', 'novosibirsk': 'novosibirsk',
-    'казань': 'kazan', 'kazan': 'kazan',
-    'нижний новгород': 'nizhny-novgorod', 'nizhny novgorod': 'nizhny-novgorod',
-    'челябинск': 'chelyabinsk', 'chelyabinsk': 'chelyabinsk',
-    'самара': 'samara', 'samara': 'samara',
-    'оренбург': 'orenburg', 'orenburg': 'orenburg'
-}
-
-CITY_MAPPING_SIMPLE = {
-    'москва': 'moscow', 'санкт-петербург': 'saint-petersburg',
-    'спб': 'saint-petersburg', 'питер': 'saint-petersburg',
-    'екатеринбург': 'yekaterinburg', 'новосибирск': 'novosibirsk',
-    'казань': 'kazan', 'нижний новгород': 'nizhny-novgorod',
-    'челябинск': 'chelyabinsk', 'самара': 'samara', 'оренбург': 'orenburg'
-}
-
-
-def _find_city_in_text(text, city_counts):
-    text_lower = text.lower()
-    for city_name, city_code in CITY_MAPPING_SIMPLE.items():
-        if city_name in text_lower:
-            city_counts[city_code] = city_counts.get(city_code, 0) + 1
-            return True
-    return False
-
 
 class ConcertService:
-    
     def __init__(self, repository: ConcertRepository):
         from src.services.concert_service import ConcertMatcherService
         self.matcher = ConcertMatcherService(repository, city='')
@@ -100,27 +68,34 @@ class ConcertService:
         logger.info(f"Sample distribution by source in DB: {source_counts_db}")
         logger.info(f"Sample distribution by city in DB: {city_counts_db}")
         
-        def _matches_artist(concert, artist_name):
-            if concert.get('title') and self.matcher.find_artist_in_text(artist_name, concert['title']):
-                return True
-            if concert.get('full_title') and self.matcher.find_artist_in_text(artist_name, concert['full_title']):
-                return True
-            description = concert.get('description', '')
-            if description and len(description) > 20:
-                normalized_artist = self.matcher.normalize_name(artist_name)
-                artist_clean = re.sub(r'[^\w\s]', '', normalized_artist)
-                if len(artist_clean) >= 4:
-                    pattern = r'\b' + re.escape(artist_clean) + r'\b'
-                    if re.search(pattern, re.sub(r'[^\w\s]', '', description.lower())):
-                        return True
-            return False
-        
-        artist_to_concerts = {
-            artist: [c for c in all_concerts if _matches_artist(c, artist)]
-            for artist in artist_names
-        }
-        artist_to_concerts = {k: v for k, v in artist_to_concerts.items() if v}
-        
+        artist_to_concerts = {}
+        for artist_name in artist_names:
+            matching_concerts = []
+            for concert in all_concerts:
+                title = concert.get('title', '')
+                if title and self.matcher.find_artist_in_text(artist_name, title):
+                    matching_concerts.append(concert)
+                    continue
+                
+                full_title = concert.get('full_title', '')
+                if full_title and self.matcher.find_artist_in_text(artist_name, full_title):
+                    matching_concerts.append(concert)
+                    continue
+                
+                description = concert.get('description', '')
+                if description and len(description) > 20:
+                    normalized_artist = self.matcher.normalize_name(artist_name)
+                    artist_clean = re.sub(r'[^\w\s]', '', normalized_artist)
+                    desc_clean = re.sub(r'[^\w\s]', '', description.lower())
+                    
+                    if len(artist_clean) >= 4:
+                        pattern = r'\b' + re.escape(artist_clean) + r'\b'
+                        if re.search(pattern, desc_clean):
+                            matching_concerts.append(concert)
+                            continue
+            
+            if matching_concerts:
+                artist_to_concerts[artist_name] = matching_concerts
         seen_urls = set()
         url_to_artists = {}
         concerts = []
@@ -138,6 +113,7 @@ class ConcertService:
                 url = concert.get('url')
                 if url and url not in seen_urls:
                     seen_urls.add(url)
+                    # Добавляем информацию о совпавшем артисте
                     if url in url_to_artists:
                         concert['matched_artist'] = ', '.join(url_to_artists[url])
                     concerts.append(concert)
@@ -145,19 +121,16 @@ class ConcertService:
         logger.info(f"Found {len(concerts)} unique concerts matching artists (all cities)")
         
         unique_concerts = remove_duplicate_concerts(concerts)
-        
         city_counts = {}
         source_counts = {}
         for concert in unique_concerts:
             source = concert.get('source', 'unknown')
             source_counts[source] = source_counts.get(source, 0) + 1
-            
             url = concert.get('url', '')
             description = concert.get('description', '')
             venue = concert.get('venue', '')
             
             city_found = False
-            
             if url:
                 city_match = re.search(r'/(moscow|saint-petersburg|yekaterinburg|novosibirsk|kazan|nizhny-novgorod|chelyabinsk|samara|orenburg)/', url)
                 if city_match:
@@ -169,14 +142,55 @@ class ConcertService:
                 city_field = concert.get('city', '')
                 if city_field and city_field != '-':
                     city_field_lower = city_field.lower()
-                    for city_name, city_code in CITY_MAPPING.items():
+                    city_mapping = {
+                        'москва': 'moscow',
+                        'moscow': 'moscow',
+                        'санкт-петербург': 'saint-petersburg',
+                        'saint petersburg': 'saint-petersburg',
+                        'st. petersburg': 'saint-petersburg',
+                        'st petersburg': 'saint-petersburg',
+                        'спб': 'saint-petersburg',
+                        'питер': 'saint-petersburg',
+                        'екатеринбург': 'yekaterinburg',
+                        'yekaterinburg': 'yekaterinburg',
+                        'новосибирск': 'novosibirsk',
+                        'novosibirsk': 'novosibirsk',
+                        'казань': 'kazan',
+                        'kazan': 'kazan',
+                        'нижний новгород': 'nizhny-novgorod',
+                        'nizhny novgorod': 'nizhny-novgorod',
+                        'челябинск': 'chelyabinsk',
+                        'chelyabinsk': 'chelyabinsk',
+                        'самара': 'samara',
+                        'samara': 'samara',
+                        'оренбург': 'orenburg',
+                        'orenburg': 'orenburg'
+                    }
+                    for city_name, city_code in city_mapping.items():
                         if city_name in city_field_lower or city_field_lower in city_name:
                             city_counts[city_code] = city_counts.get(city_code, 0) + 1
                             city_found = True
                             break
             
             if not city_found:
-                _find_city_in_text(f"{description} {venue}", city_counts)
+                text_to_check = f"{description} {venue}".lower()
+                city_mapping = {
+                    'москва': 'moscow',
+                    'санкт-петербург': 'saint-petersburg',
+                    'спб': 'saint-petersburg',
+                    'питер': 'saint-petersburg',
+                    'екатеринбург': 'yekaterinburg',
+                    'новосибирск': 'novosibirsk',
+                    'казань': 'kazan',
+                    'нижний новгород': 'nizhny-novgorod',
+                    'челябинск': 'chelyabinsk',
+                    'самара': 'samara',
+                    'оренбург': 'orenburg'
+                }
+                for city_name, city_code in city_mapping.items():
+                    if city_name in text_to_check:
+                        city_counts[city_code] = city_counts.get(city_code, 0) + 1
+                        break
         
         logger.info(f"Дедупликация: было {len(concerts)} концертов, стало {len(unique_concerts)} уникальных")
         logger.info(f"Распределение по городам: {city_counts}")
@@ -194,14 +208,17 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
     user_id = message.from_user.id
     
     try:
+        # Извлекаем URL из сообщения (может быть HTML-код с iframe или прямая ссылка)
         url = message.text or ""
         url = url.strip()
         
+        # Проверяем, что это ссылка на плейлист
         try:
             owner, kind = extract_from_url(url)
             logger.info(f"Извлечено из URL: owner={owner}, kind={kind}")
         except ValueError as e:
             logger.error(f"Ошибка извлечения URL: {e}, текст: {url[:200]}")
+            # Проверяем, содержит ли сообщение что-то похожее на ссылку
             if 'music.yandex' not in url.lower() and 'playlist' not in url.lower():
                 await message.answer(
                     "❌ Неверный формат. Пожалуйста, отправьте ссылку на публичный плейлист Яндекс Музыки "
@@ -220,8 +237,10 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                 )
                 return
         
+        # Отправляем сообщение о начале обработки
         status_msg = await message.answer("⏳ Сканирую плейлист (это займет ~2-3 минуты)...")
         
+        # Инициализируем клиенты и сервисы
         try:
             music_client = MusicClient.from_env()
             playlist_service = ServicePlaylist(music_client)
@@ -233,6 +252,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
             await state.clear()
             return
         
+        # Получаем треки из плейлиста
         try:
             playlist = music_client.get_playlist(kind, owner)
             tracks = playlist.fetch_tracks()
@@ -243,6 +263,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                 tracks_list.append(tr)
                 total_tracks += 1
             
+            # Собираем уникальных артистов
             artists = set()
             processed = 0
             
@@ -254,6 +275,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                             artists.add(artist.name)
                 processed += 1
                 
+                # Обновляем прогресс каждые 50 треков
                 if processed % 50 == 0:
                     try:
                         await status_msg.edit_text(
@@ -264,14 +286,17 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
             
             artist_list = list(artists)
             
+            # Обновляем статус
             await status_msg.edit_text(
                 f"✅ Найдено {len(artist_list)} уникальных артистов\n"
                 f"🔍 Ищу концерты в базе данных..."
             )
             
+            # Ищем концерты в базе данных
             concerts = concert_service.find_concerts_by_artists(artist_list)
             logger.info(f"Найдено концертов в БД: {len(concerts)}")
             
+            # Ищем концерты через Ticketmaster API
             ticketmaster_concerts = []
             try:
                 await status_msg.edit_text(
@@ -279,11 +304,13 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                     f"🌍 Ищу концерты через Ticketmaster..."
                 )
                 
-                artists_to_check = artist_list[:20]
+                # Проверяем только 20 артистов из плейлиста пользователя через Ticketmaster
+                artists_to_check = artist_list[:20]  # Только 20 артистов из плейлиста пользователя
                 logger.info(f"Проверяю {len(artists_to_check)} артистов из плейлиста пользователя через Ticketmaster API")
                 
                 for i, artist_name in enumerate(artists_to_check, 1):
                     try:
+                        # Обновляем прогресс каждые 5 артистов
                         if i % 5 == 0:
                             try:
                                 await status_msg.edit_text(
@@ -295,13 +322,16 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                         
                         events = get_artist_events(artist_name, page_size=10)
                         if events:
+                            # Конвертируем события Ticketmaster в формат Афиши
                             for event in events:
                                 afisha_event = convert_ticketmaster_to_afisha_format(event)
+                                # Добавляем информацию о совпавшем артисте
                                 afisha_event['matched_artist'] = artist_name
                                 ticketmaster_concerts.append(afisha_event)
                             
                             logger.info(f"Найдено {len(events)} концертов для {artist_name} через Ticketmaster")
                         
+                        # Rate limiting
                         await asyncio.sleep(1.1)
                     except TicketmasterError as e:
                         logger.warning(f"Ошибка Ticketmaster для {artist_name}: {e}")
@@ -314,22 +344,28 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                 
             except Exception as e:
                 logger.error(f"Ошибка при поиске через Ticketmaster: {e}", exc_info=True)
+                # Продолжаем работу даже если Ticketmaster не работает
             
+            # Объединяем концерты из БД и Ticketmaster
             all_concerts = concerts + ticketmaster_concerts
             logger.info(f"Всего концертов (БД + Ticketmaster): {len(all_concerts)}")
             
+            # Удаляем дубликаты перед определением городов
             unique_concerts = remove_duplicate_concerts(all_concerts)
             logger.info(f"После дедупликации: было {len(all_concerts)} концертов, стало {len(unique_concerts)} уникальных")
             
+            # Определяем доступные города из уникальных концертов
             available_cities = get_available_cities(unique_concerts)
             logger.info(f"Найдено городов: {len(available_cities)}, города: {available_cities}")
             
+            # Сортируем по дате по умолчанию
             sorted_concerts = sorted(unique_concerts, 
                                    key=lambda x: extract_date_sort_key(
                                        get_concert_date(x) or ''
                                    ))
             sorted_concerts = remove_duplicate_concerts(sorted_concerts)
             
+            # Сохраняем результаты для пользователя
             user_results[user_id] = {
                 'concerts': sorted_concerts,
                 'original_concerts': sorted_concerts.copy(),
@@ -342,8 +378,11 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                 'available_cities': available_cities
             }
             
+            # Формируем ответ
             if sorted_concerts:
+                # Всегда предлагаем выбрать город, если есть несколько городов
                 if len(available_cities) > 0:
+                    # Всегда показываем выбор города
                     city_keyboard = create_city_selection_keyboard(available_cities)
                     await status_msg.edit_text(
                         f"✅ Найдено {len(sorted_concerts)} концертов в {len(available_cities)} городе(ах).\n\n"
@@ -351,6 +390,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                         reply_markup=city_keyboard
                     )
                 else:
+                    # Если нет городов (не должно быть, но на всякий случай)
                     concert_text = format_concert_message(sorted_concerts, 0, 10, 'date')
                     keyboard = create_concert_keyboard(sorted_concerts, 0, 10, None, 'date', available_cities)
                     
@@ -371,6 +411,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
         except Exception as e:
             logger.error(f"Ошибка обработки плейлиста: {e}", exc_info=True)
             error_msg = str(e)
+            # Более понятные сообщения об ошибках
             if "not found" in error_msg.lower() or "404" in error_msg.lower():
                 user_msg = (
                     f"❌ Плейлист не найден.\n\n"
@@ -400,6 +441,7 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
                 await message.answer(user_msg)
             await state.clear()
         finally:
+            # Закрываем репозиторий
             try:
                 repository.close()
             except:
@@ -409,3 +451,4 @@ async def handle_playlist_url(message: Message, state: FSMContext, user_results:
         logger.error(f"Общая ошибка: {e}", exc_info=True)
         await message.answer("❌ Произошла непредвиденная ошибка. Попробуйте позже.")
         await state.clear()
+

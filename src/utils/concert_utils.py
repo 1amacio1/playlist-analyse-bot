@@ -66,3 +66,4 @@ def get_concert_venue(concert: Dict) -> Optional[str]:
         if venue_from_desc:
             return venue_from_desc
     return None
+

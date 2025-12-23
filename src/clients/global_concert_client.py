@@ -6,7 +6,7 @@ import random
 import requests
 import argparse
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict
 from dotenv import load_dotenv
@@ -62,8 +62,15 @@ def get_artist_events(
 
     headers = {"User-Agent": "Mozilla/5.0 (Ticketmaster Collector Bot)"}
 
+    # Use proxy for Ticketmaster API requests
+    proxies = config.proxies_dict
+    if proxies:
+        logger.info(f"Using proxy for Ticketmaster: {config.PROXY_HOST}:{config.PROXY_PORT}")
+    else:
+        logger.info("No proxy configured for Ticketmaster API")
+
     for attempt in range(retries):
-        response = requests.get(BASE_URL, params=params, headers=headers, timeout=15)
+        response = requests.get(BASE_URL, params=params, headers=headers, proxies=proxies, timeout=15)
 
         if response.status_code == 200:
             data = response.json()
@@ -79,7 +86,7 @@ def get_artist_events(
                     "venue": venue.get("name"),
                     "city": venue.get("city", {}).get("name"),
                     "country": venue.get("country", {}).get("name"),
-                    "fetched_at": datetime.utcnow(),
+                    "fetched_at": datetime.now(timezone.utc),
                     "timezone": e.get("dates", {}).get("timezone"),
                     "url": e.get("_links", {}).get("self", {}).get("href"),
                     "source": "ticketmaster"

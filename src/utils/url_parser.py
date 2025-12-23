@@ -1,4 +1,3 @@
-# src/utils/url_parser.py
 import re
 from typing import Tuple
 

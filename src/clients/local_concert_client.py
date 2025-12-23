@@ -75,6 +75,11 @@ class AfishaSeleniumParser:
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
         
+        if config.proxy_url:
+            proxy_url = config.proxy_url
+            options.add_argument(f'--proxy-server={proxy_url}')
+            logger.info(f"Using proxy: {config.PROXY_HOST}:{config.PROXY_PORT}")
+        
         prefs = {
             "profile.default_content_setting_values.notifications": 2,
             "profile.default_content_settings.popups": 0,
@@ -87,8 +92,7 @@ class AfishaSeleniumParser:
         if use_system_driver:
             driver_executable_path = '/usr/bin/chromedriver'
             logger.info(f"Using system chromedriver: {driver_executable_path}")
-        else:
-            options.add_experimental_option("excludeSwitches", ["enable-logging"])
+        # Убрали excludeSwitches - несовместимо с некоторыми версиями Chrome
         
         try:
             self.driver = uc.Chrome(
@@ -160,11 +164,12 @@ class AfishaSeleniumParser:
         try:
             self.human_like_delay(3, 5)
 
-            # Try to find category links
+            # Try to find category links - use current city from config
+            current_city = config.CITY
             category_selectors = [
-                '//a[contains(@href, "/orenburg/")]',
-                '//nav//a[contains(@href, "/orenburg/")]',
-                '//header//a[contains(@href, "/orenburg/")]',
+                f'//a[contains(@href, "/{current_city}/")]',
+                f'//nav//a[contains(@href, "/{current_city}/")]',
+                f'//header//a[contains(@href, "/{current_city}/")]',
             ]
 
             for selector in category_selectors:
@@ -185,9 +190,10 @@ class AfishaSeleniumParser:
                                 if any(skip in href for skip in ['selections', 'places', 'media', 'filters']):
                                     continue
 
-                                # Extract category name
-                                if '/orenburg/' in href:
-                                    parts = href.split('/orenburg/')
+                                # Extract category name - use current city
+                                city_path = f'/{current_city}/'
+                                if city_path in href:
+                                    parts = href.split(city_path)
                                     if len(parts) > 1:
                                         category_name = parts[1].split('?')[0].strip('/')
 
@@ -796,6 +802,7 @@ class AfishaSeleniumParser:
                 'date': date_text,
                 'price': price,
                 'venue': venue,
+                'city': config.CITY,
                 'image': image_url,
                 'scraped_at': datetime.utcnow()
             }

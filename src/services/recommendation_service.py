@@ -2,6 +2,7 @@ from typing import List, Dict, Optional
 import logging
 import json
 import time
+import os
 import google.genai as genai
 from google.genai import errors as genai_errors
 from src.config.settings import config
@@ -23,6 +24,19 @@ class RecommendationService:
             self.model_name = None
             self.fallback_models = []
         else:
+            proxy_url = config.proxy_url
+            if proxy_url:
+                os.environ['HTTP_PROXY'] = proxy_url
+                os.environ['HTTPS_PROXY'] = proxy_url
+                os.environ['http_proxy'] = proxy_url
+                os.environ['https_proxy'] = proxy_url
+                logger.info(f"Using proxy for Gemini API: {config.PROXY_HOST}:{config.PROXY_PORT}")
+            else:
+                os.environ.pop('HTTP_PROXY', None)
+                os.environ.pop('HTTPS_PROXY', None)
+                os.environ.pop('http_proxy', None)
+                os.environ.pop('https_proxy', None)
+                logger.info("No proxy configured for Gemini API")
 
             self.client = genai.Client(api_key=self.api_key)
             self.model_name = 'gemini-2.0-flash-exp'
@@ -30,7 +44,6 @@ class RecommendationService:
             self.enabled = True
     
     def _filter_concerts_by_city(self, concerts: List[Dict]) -> List[Dict]:
-        """Filter concerts by city"""
         filtered = []
         for concert in concerts:
             url = concert.get('url', '')
@@ -39,7 +52,6 @@ class RecommendationService:
         return filtered
     
     def _format_concerts_for_prompt(self, concerts: List[Dict]) -> str:
-        """Format concerts data for AI prompt"""
         formatted = []
         for i, concert in enumerate(concerts[:50], 1):
             title = concert.get('title', 'N/A')

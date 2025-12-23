@@ -61,6 +61,7 @@ def get_available_cities(concerts: List[Dict]) -> List[str]:
     for concert in concerts:
         city_found = False
         
+        # 0. Проверяем поле city напрямую (для Ticketmaster)
         city_field = concert.get('city', '')
         if city_field and city_field != '-':
             city_lower = city_field.lower()
@@ -100,8 +101,8 @@ def get_available_cities(concerts: List[Dict]) -> List[str]:
                     city_name = city_codes.get(city_code)
                     if city_name:
                         cities.add(city_name)
-                        cities_found += 1
-                        city_found = True
+                    cities_found += 1
+                    city_found = True
         
         if not city_found:
             description = concert.get('description', '')
@@ -127,7 +128,7 @@ def get_available_cities(concerts: List[Dict]) -> List[str]:
         
         if not city_found:
             cities_not_found += 1
-            if cities_not_found <= 5:  # Логируем только первые 5 для отладки
+            if cities_not_found <= 5:
                 logger.debug(f"Город не найден для концерта: {concert.get('title', 'Unknown')[:50]}")
     
     logger.info(f"Извлечено городов: {len(cities)}, найдено совпадений: {cities_found}, не найдено: {cities_not_found}")
@@ -166,6 +167,7 @@ def filter_by_city(concerts: List[Dict], city: str) -> List[Dict]:
     for concert in concerts:
         city_found = False
         
+        # 0. Проверяем поле city напрямую (для Ticketmaster)
         city_field = concert.get('city', '')
         if city_field and city_field != '-':
             city_field_lower = city_field.lower()
@@ -189,8 +191,8 @@ def filter_by_city(concerts: List[Dict], city: str) -> List[Dict]:
                 for term in search_terms:
                     if term.lower() in desc_lower:
                         filtered.append(concert)
-                        city_found = True
-                        break
+                    city_found = True
+                    break
         
         if not city_found:
             venue = concert.get('venue', '')
@@ -199,8 +201,8 @@ def filter_by_city(concerts: List[Dict], city: str) -> List[Dict]:
                 for term in search_terms:
                     if term.lower() in venue_lower:
                         filtered.append(concert)
-                        city_found = True
-                        break
+                    city_found = True
+                    break
         
         if not city_found:
             title = concert.get('title', '')
@@ -277,8 +279,8 @@ def extract_date_sort_key(date_str: str) -> tuple:
     date_match = re.search(r'(\d{1,2})\.(\d{1,2})(?!\.\d)', date_str)
     if date_match:
         from datetime import datetime
-            current_year = datetime.now().year
-            return (current_year, int(date_match.group(2)), int(date_match.group(1)))
+        current_year = datetime.now().year
+        return (current_year, int(date_match.group(2)), int(date_match.group(1)))
     
     logger.debug(f"Не удалось распарсить дату: {date_str[:100]}")
     return (9999, 12, 31)
@@ -306,7 +308,7 @@ def format_concert_date_time(concert: Dict) -> str:
         formatted_date = f"{day} {month_name}"
         if time:
             return f"{formatted_date}, {time}"
-            return formatted_date
+        return formatted_date
     
     date_clean = re.sub(r',\s*\d{1,2}:\d{2}', '', date)
     date_clean = re.sub(r'\s+в\s+\d{1,2}:\d{2}', '', date_clean)
@@ -461,7 +463,17 @@ def create_concert_keyboard(concerts: list, current_page: int = 0, page_size: in
     if nav_row:
         buttons.append(nav_row)
     
+    if concerts:
+        first_concert_idx = current_page * page_size
+        if first_concert_idx < len(concerts):
+            buttons.append([InlineKeyboardButton(
+                text="🔔 Добавить напоминание", 
+                callback_data=f"remind_{first_concert_idx}"
+            )])
+    
     buttons.append([InlineKeyboardButton(text="✨ Рекомендовано вам", callback_data="recommendations")])
+    
+    buttons.append([InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh")])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

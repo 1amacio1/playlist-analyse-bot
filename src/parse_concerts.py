@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""
-Script to parse concerts from Yandex Afisha and save to MongoDB
-Run this before using the main playlist analyzer
-"""
-
 import sys
 import time
 import logging
 import argparse
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
-# Add project root and src to path
 project_root = Path(__file__).parent.parent
 src_path = Path(__file__).parent
 sys.path.insert(0, str(project_root))
@@ -20,8 +15,10 @@ sys.path.insert(0, str(src_path))
 from src.clients.local_concert_client import AfishaSeleniumParser
 from src.repositories.concert_repository import ConcertRepository
 from src.config.settings import config
+import nest_asyncio
 
-# Setup logging
+nest_asyncio.apply()
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -30,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 # Список популярных городов для парсинга
 ALL_CITIES = [
-    # 'moscow',
-    # 'saint-petersburg',
-    # 'yekaterinburg',
-    # 'novosibirsk',
-    # 'kazan',
-    # 'nizhny-novgorod',
-    # 'chelyabinsk',
+    'moscow',
+    'saint-petersburg',
+    'yekaterinburg',
+    'novosibirsk',
+    'kazan',
+    'nizhny-novgorod',
+    'chelyabinsk',
     'samara',
     'orenburg'
 ]
@@ -46,7 +43,7 @@ DEFAULT_INTERVAL_HOURS = 6
 DEFAULT_INTERVAL_SECONDS = 20
 
 
-def parse_city(city: str, db: ConcertRepository, parser: AfishaSeleniumParser) -> tuple:
+async def parse_city(city: str, db: ConcertRepository, parser: AfishaSeleniumParser) -> tuple:
     """Parse concerts for a single city"""
     logger.info("=" * 60)
     logger.info(f"Parsing city: {city}")
@@ -70,7 +67,7 @@ def parse_city(city: str, db: ConcertRepository, parser: AfishaSeleniumParser) -
             return 0, 0
         
         logger.info(f"Saving {len(events)} concerts to database...")
-        saved_count = db.save_events_batch(events)
+        saved_count = await db.save_events_batch(events)
         
         elapsed_time = time.time() - start_time
         
@@ -94,7 +91,7 @@ def parse_city(city: str, db: ConcertRepository, parser: AfishaSeleniumParser) -
         return 0, 0
 
 
-def run_parsing_all_cities():
+async def run_parsing_all_cities():
     """Run parsing for all cities"""
     db = None
     parser = None
@@ -102,7 +99,7 @@ def run_parsing_all_cities():
     try:
         logger.info("Connecting to database...")
         db = ConcertRepository()
-        initial_count = db.count_events_by_category('concert')
+        initial_count = await db.count_events_by_category('concert')
         logger.info(f"Current concerts in database: {initial_count}")
         
         logger.info("Initializing parser...")
@@ -118,7 +115,7 @@ def run_parsing_all_cities():
             logger.info(f"City {i}/{len(ALL_CITIES)}: {city}")
             logger.info(f"{'=' * 60}")
             
-            events_count, saved_count = parse_city(city, db, parser)
+            events_count, saved_count = await parse_city(city, db, parser)
             total_events += events_count
             total_saved += saved_count
             city_results[city] = {'events': events_count, 'saved': saved_count}
@@ -130,7 +127,7 @@ def run_parsing_all_cities():
                 time.sleep(delay)
         
         # Итоговая статистика
-        final_count = db.count_events_by_category('concert')
+        final_count = await db.count_events_by_category('concert')
         logger.info("\n" + "=" * 60)
         logger.info("FINAL SUMMARY")
         logger.info("=" * 60)
@@ -161,10 +158,10 @@ def run_parsing_all_cities():
         
         if db:
             logger.info("Closing database...")
-            db.close()
+            await db.close()
 
 
-def run_scheduled_parsing(interval_seconds):
+async def run_scheduled_parsing(interval_seconds):
     """Run parsing periodically with specified interval"""
     logger.info("=" * 60)
     logger.info("Starting scheduled parsing mode")
@@ -185,7 +182,7 @@ def run_scheduled_parsing(interval_seconds):
             logger.info("=" * 60)
             
             try:
-                run_parsing_all_cities()
+                await run_parsing_all_cities()
                 logger.info(f"\n✓ Run #{iteration} completed successfully")
             except KeyboardInterrupt:
                 logger.info("\nScheduled parsing stopped by user")
@@ -202,7 +199,7 @@ def run_scheduled_parsing(interval_seconds):
             logger.info("=" * 60)
             
             # Wait for next iteration
-            time.sleep(interval_seconds)
+            await asyncio.sleep(interval_seconds)
             
     except KeyboardInterrupt:
         logger.info("\n" + "=" * 60)
@@ -253,32 +250,35 @@ def main():
     
     # Clear database option
     if args.clear:
-        db = ConcertRepository()
-        total_events = db.count_events()
-        logger.info(f"Current events in database: {total_events}")
-        
-        if total_events == 0:
-            logger.info("Database is already empty.")
-            db.close()
-            return
-        
-        if not sys.stdin.isatty():
-            deleted_count = db.delete_all_events()
-            logger.info(f"Deleted {deleted_count} events")
-        else:
-            confirmation = input("Type 'DELETE' to confirm deletion: ").strip()
-            if confirmation == 'DELETE':
-                deleted_count = db.delete_all_events()
+        async def clear_db():
+            db = ConcertRepository()
+            total_events = await db.count_events()
+            logger.info(f"Current events in database: {total_events}")
+            
+            if total_events == 0:
+                logger.info("Database is already empty.")
+                await db.close()
+                return
+            
+            if not sys.stdin.isatty():
+                deleted_count = await db.delete_all_events()
                 logger.info(f"Deleted {deleted_count} events")
             else:
-                logger.info("Operation cancelled.")
-        db.close()
+                confirmation = input("Type 'DELETE' to confirm deletion: ").strip()
+                if confirmation == 'DELETE':
+                    deleted_count = await db.delete_all_events()
+                    logger.info(f"Deleted {deleted_count} events")
+                else:
+                    logger.info("Operation cancelled.")
+            await db.close()
+        
+        asyncio.run(clear_db())
         return
     
     # Scheduled mode
     if args.schedule:
         interval_seconds = args.interval * 3600
-        run_scheduled_parsing(interval_seconds)
+        asyncio.run(run_scheduled_parsing(interval_seconds))
         return
     
     # Single run mode
@@ -302,22 +302,25 @@ def main():
         choice = input("Enter choice: ").strip().lower()
         
         if choice == 'clear':
-            db = ConcertRepository()
-            total_events = db.count_events()
-            logger.info(f"Current events in database: {total_events}")
+            async def clear_db_interactive():
+                db = ConcertRepository()
+                total_events = await db.count_events()
+                logger.info(f"Current events in database: {total_events}")
+                
+                if total_events == 0:
+                    logger.info("Database is already empty.")
+                    await db.close()
+                    return
+                
+                confirmation = input("Type 'DELETE' to confirm deletion: ").strip()
+                if confirmation == 'DELETE':
+                    deleted_count = await db.delete_all_events()
+                    logger.info(f"Deleted {deleted_count} events")
+                else:
+                    logger.info("Operation cancelled.")
+                await db.close()
             
-            if total_events == 0:
-                logger.info("Database is already empty.")
-                db.close()
-                return
-            
-            confirmation = input("Type 'DELETE' to confirm deletion: ").strip()
-            if confirmation == 'DELETE':
-                deleted_count = db.delete_all_events()
-                logger.info(f"Deleted {deleted_count} events")
-            else:
-                logger.info("Operation cancelled.")
-            db.close()
+            asyncio.run(clear_db_interactive())
             return
         
         print("\nSelect parsing mode:")
@@ -336,70 +339,73 @@ def main():
             logger.info(f"Using default city: {config.CITY}")
     
     # Run parsing for specified cities
-    db = None
-    parser = None
+    async def run_parsing():
+        db = None
+        parser = None
+        
+        try:
+            logger.info("Connecting to database...")
+            db = ConcertRepository()
+            initial_count = await db.count_events_by_category('concert')
+            logger.info(f"Current concerts in database: {initial_count}")
+            
+            logger.info("Initializing parser...")
+            parser = AfishaSeleniumParser(headless=config.HEADLESS)
+            parser.start()
+            
+            total_events = 0
+            total_saved = 0
+            city_results = {}
+            
+            for i, city in enumerate(cities_to_parse, 1):
+                logger.info(f"\n{'=' * 60}")
+                logger.info(f"City {i}/{len(cities_to_parse)}: {city}")
+                logger.info(f"{'=' * 60}")
+                
+                events_count, saved_count = await parse_city(city, db, parser)
+                total_events += events_count
+                total_saved += saved_count
+                city_results[city] = {'events': events_count, 'saved': saved_count}
+                
+                if i < len(cities_to_parse):
+                    delay = 5
+                    logger.info(f"Waiting {delay} seconds before next city...")
+                    time.sleep(delay)
+            
+            final_count = await db.count_events_by_category('concert')
+            logger.info("\n" + "=" * 60)
+            logger.info("FINAL SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"Cities parsed: {len(cities_to_parse)}")
+            logger.info(f"Total events found: {total_events}")
+            logger.info(f"Total new events saved: {total_saved}")
+            logger.info(f"Total duplicates skipped: {total_events - total_saved}")
+            logger.info(f"Initial concerts in database: {initial_count}")
+            logger.info(f"Final concerts in database: {final_count}")
+            logger.info(f"New concerts added: {final_count - initial_count}")
+            logger.info("=" * 60)
+            
+            logger.info("\nResults by city:")
+            for city, results in city_results.items():
+                logger.info(f"  {city}: {results['events']} found, {results['saved']} saved")
+            
+        except KeyboardInterrupt:
+            logger.info("Parser interrupted by user")
+        except Exception as e:
+            logger.error(f"Fatal error: {e}", exc_info=True)
+            sys.exit(1)
+        finally:
+            if parser:
+                logger.info("Closing browser...")
+                parser.close()
+            
+            if db:
+                logger.info("Closing database...")
+                await db.close()
+            
+            logger.info("Parser finished")
     
-    try:
-        logger.info("Connecting to database...")
-        db = ConcertRepository()
-        initial_count = db.count_events_by_category('concert')
-        logger.info(f"Current concerts in database: {initial_count}")
-        
-        logger.info("Initializing parser...")
-        parser = AfishaSeleniumParser(headless=config.HEADLESS)
-        parser.start()
-        
-        total_events = 0
-        total_saved = 0
-        city_results = {}
-        
-        for i, city in enumerate(cities_to_parse, 1):
-            logger.info(f"\n{'=' * 60}")
-            logger.info(f"City {i}/{len(cities_to_parse)}: {city}")
-            logger.info(f"{'=' * 60}")
-            
-            events_count, saved_count = parse_city(city, db, parser)
-            total_events += events_count
-            total_saved += saved_count
-            city_results[city] = {'events': events_count, 'saved': saved_count}
-            
-            if i < len(cities_to_parse):
-                delay = 5
-                logger.info(f"Waiting {delay} seconds before next city...")
-                time.sleep(delay)
-        
-        final_count = db.count_events_by_category('concert')
-        logger.info("\n" + "=" * 60)
-        logger.info("FINAL SUMMARY")
-        logger.info("=" * 60)
-        logger.info(f"Cities parsed: {len(cities_to_parse)}")
-        logger.info(f"Total events found: {total_events}")
-        logger.info(f"Total new events saved: {total_saved}")
-        logger.info(f"Total duplicates skipped: {total_events - total_saved}")
-        logger.info(f"Initial concerts in database: {initial_count}")
-        logger.info(f"Final concerts in database: {final_count}")
-        logger.info(f"New concerts added: {final_count - initial_count}")
-        logger.info("=" * 60)
-        
-        logger.info("\nResults by city:")
-        for city, results in city_results.items():
-            logger.info(f"  {city}: {results['events']} found, {results['saved']} saved")
-        
-    except KeyboardInterrupt:
-        logger.info("Parser interrupted by user")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        sys.exit(1)
-    finally:
-        if parser:
-            logger.info("Closing browser...")
-            parser.close()
-        
-        if db:
-            logger.info("Closing database...")
-            db.close()
-        
-        logger.info("Parser finished")
+    asyncio.run(run_parsing())
 
 
 if __name__ == '__main__':
