@@ -1,7 +1,6 @@
 import os
 from yandex_music import Client
 
-
 class MusicClient:
     def __init__(self, token: str):
         self._client = Client(token).init()

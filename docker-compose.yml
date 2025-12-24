@@ -1,0 +1,172 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: afisha_postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: afisha_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - afisha_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: afisha_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: afisha_db
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - afisha_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - legacy
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: playlist_analyse_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=afisha_db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+    networks:
+      - afisha_network
+    stdin_open: true
+    tty: true
+    command: python -m src.bot.main
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: afisha_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=afisha_db
+      - HEADLESS=true
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+    networks:
+      - afisha_network
+    stdin_open: true
+    tty: true
+    command: python src/main.py
+
+  parser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: afisha_parser
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=afisha_db
+      - HEADLESS=true
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+      - /dev/shm:/dev/shm
+    networks:
+      - afisha_network
+    shm_size: '2gb'
+    command: sh -c "Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 & python src/scripts/parse_concerts.py --schedule --interval 6"
+    profiles:
+      - parser
+
+  ticketmaster:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: afisha_ticketmaster
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=afisha_db
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USERNAME=admin
+      - MONGO_PASSWORD=password123
+      - MONGO_DB=afisha_db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+    networks:
+      - afisha_network
+    command: python src/clients/global_concert_client.py --schedule --interval 6
+    profiles:
+      - ticketmaster
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  mongodb_config:
+
+networks:
+  afisha_network:
+    driver: bridge

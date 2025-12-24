@@ -1,7 +1,6 @@
 import re
 from typing import Optional, Dict
 
-
 def extract_date_from_description(description: Optional[str]) -> Optional[str]:
     if not description:
         return None
@@ -12,7 +11,6 @@ def extract_date_from_description(description: Optional[str]) -> Optional[str]:
         date_part = re.sub(r'^(завтра|сегодня|послезавтра)\s+', '', date_part, flags=re.IGNORECASE)
         return date_part if date_part else None
     return None
-
 
 def extract_time_from_description(description: Optional[str]) -> Optional[str]:
     if not description:
@@ -25,7 +23,6 @@ def extract_time_from_description(description: Optional[str]) -> Optional[str]:
             return time_match.group(1)
     return None
 
-
 def extract_venue_from_description(description: Optional[str]) -> Optional[str]:
     if not description:
         return None
@@ -34,7 +31,6 @@ def extract_venue_from_description(description: Optional[str]) -> Optional[str]:
         venue = parts[1].strip()
         return venue if venue else None
     return None
-
 
 def get_concert_date(concert: Dict) -> Optional[str]:
     if 'dates' in concert and concert['dates']:
@@ -49,14 +45,12 @@ def get_concert_date(concert: Dict) -> Optional[str]:
             return date_from_desc
     return None
 
-
 def get_concert_time(concert: Dict) -> Optional[str]:
     if 'description' in concert and concert['description']:
         time_from_desc = extract_time_from_description(concert['description'])
         if time_from_desc:
             return time_from_desc
     return None
-
 
 def get_concert_venue(concert: Dict) -> Optional[str]:
     if 'venue' in concert and concert['venue']:

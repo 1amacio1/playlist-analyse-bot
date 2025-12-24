@@ -83,3 +83,20 @@ def test_extract_time_none():
     desc = "15 марта 2024 • Venue"
     res = extract_time_from_description(desc)
     assert res is None
+
+def test_extract_date_empty_string():
+    res = extract_date_from_description('')
+    assert res is None
+
+def test_extract_time_empty_string():
+    res = extract_time_from_description('')
+    assert res is None
+
+def test_extract_venue_empty_string():
+    res = extract_venue_from_description('')
+    assert res is None
+
+def test_extract_venue_no_second_part():
+    desc = "15 марта 2024, 19:00"
+    res = extract_venue_from_description(desc)
+    assert res is None

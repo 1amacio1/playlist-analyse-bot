@@ -1,7 +1,3 @@
-"""
-Selenium-based scraper for Yandex Afisha
-Uses undetected-chromedriver to avoid bot detection
-"""
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -23,18 +19,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 class AfishaSeleniumParser:
     def __init__(self, headless: bool = True):
         self.headless = headless
         self.driver = None
 
     def start(self):
-        """Start Chrome with undetected-chromedriver"""
         logger.info("Starting Chrome with undetected-chromedriver...")
 
         import undetected_chromedriver as uc
-        
+
         options = uc.ChromeOptions()
 
         chrome_paths = [
@@ -43,7 +37,7 @@ class AfishaSeleniumParser:
             '/usr/bin/chromium',
             '/usr/bin/google-chrome'
         ]
-        
+
         chrome_binary = None
         import os
         for path in chrome_paths:
@@ -51,16 +45,16 @@ class AfishaSeleniumParser:
                 chrome_binary = path
                 logger.info(f"Found Chrome at: {chrome_binary}")
                 break
-        
+
         if chrome_binary:
             options.binary_location = chrome_binary
         else:
             logger.warning("Chrome binary not found, using default")
-        
+
         options.add_argument(f'user-agent={config.USER_AGENT}')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--lang=ru-RU')
-        
+
         if self.headless:
             options.add_argument('--headless=new')
 
@@ -74,57 +68,52 @@ class AfishaSeleniumParser:
         options.add_argument('--disable-background-timer-throttling')
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
-        
+
         if config.proxy_url:
             proxy_url = config.proxy_url
             options.add_argument(f'--proxy-server={proxy_url}')
             logger.info(f"Using proxy: {config.PROXY_HOST}:{config.PROXY_PORT}")
-        
+
         prefs = {
             "profile.default_content_setting_values.notifications": 2,
             "profile.default_content_settings.popups": 0,
         }
         options.add_experimental_option("prefs", prefs)
-        
+
         import os
         driver_executable_path = None
         use_system_driver = os.path.exists('/.dockerenv')
         if use_system_driver:
             driver_executable_path = '/usr/bin/chromedriver'
             logger.info(f"Using system chromedriver: {driver_executable_path}")
-        # Убрали excludeSwitches - несовместимо с некоторыми версиями Chrome
-        
+
         try:
             self.driver = uc.Chrome(
-                options=options, 
-                version_main=None, 
+                options=options,
+                version_main=None,
                 driver_executable_path=driver_executable_path,
                 use_subprocess=True
             )
             self.driver.set_page_load_timeout(60)
-            
+
             logger.info("Chrome started successfully")
         except Exception as e:
             logger.error(f"Failed to start Chrome: {e}")
             raise
 
     def close(self):
-        """Close the browser"""
         if self.driver:
             self.driver.quit()
         logger.info("Browser closed")
 
     def human_like_delay(self, min_sec=1, max_sec=3):
-        """Add random human-like delay"""
         delay = random.uniform(min_sec, max_sec)
         time.sleep(delay)
 
     def close_popups(self):
-        """Close any popups or overlays"""
         try:
             self.human_like_delay(1, 2)
 
-            # Try to find and close popup
             close_buttons = [
                 '//button[@aria-label="Закрыть"]',
                 '//button[contains(text(), "Закрыть")]',
@@ -144,27 +133,22 @@ class AfishaSeleniumParser:
             logger.debug(f"No popups to close: {e}")
 
     def scroll_page(self, scrolls: int = 5):
-        """Scroll page with human-like behavior"""
         for i in range(scrolls):
-            # Random scroll position
             scroll_to = random.randint(300, 800)
             self.driver.execute_script(f'window.scrollTo(0, {scroll_to})')
             self.human_like_delay(0.5, 1.5)
 
-            # Scroll to bottom
             self.driver.execute_script('window.scrollTo(0, document.body.scrollHeight)')
             self.human_like_delay(1, 2)
             logger.debug(f"Scroll {i + 1}/{scrolls}")
 
     def get_categories(self) -> List[Dict]:
-        """Extract available event categories"""
         logger.info("Extracting categories...")
         categories = []
 
         try:
             self.human_like_delay(3, 5)
 
-            # Try to find category links - use current city from config
             current_city = config.CITY
             category_selectors = [
                 f'//a[contains(@href, "/{current_city}/")]',
@@ -186,11 +170,9 @@ class AfishaSeleniumParser:
                                 if not href or not text:
                                     continue
 
-                                # Skip non-category links
                                 if any(skip in href for skip in ['selections', 'places', 'media', 'filters']):
                                     continue
 
-                                # Extract category name - use current city
                                 city_path = f'/{current_city}/'
                                 if city_path in href:
                                     parts = href.split(city_path)
@@ -214,7 +196,6 @@ class AfishaSeleniumParser:
                     logger.debug(f"Selector failed: {e}")
                     continue
 
-            # Use default categories if none found
             if len(categories) < 3:
                 logger.warning("Using default categories")
                 default_categories = [
@@ -242,15 +223,10 @@ class AfishaSeleniumParser:
             return []
 
     def get_selections(self, category: str) -> List[Dict]:
-        """
-        Get selection (subcategory) URLs for a category
-        Returns list of {'name': str, 'url': str}
-        """
         try:
             logger.debug(f"Finding selections for category: {category}")
             selections = []
 
-            # Find selection links
             selection_elements = self.driver.find_elements(
                 By.XPATH,
                 f'//a[contains(@href, "/selections/") and contains(@href, "{category}")]'
@@ -264,7 +240,6 @@ class AfishaSeleniumParser:
                     if not href:
                         continue
 
-                    # Get title
                     try:
                         h2 = elem.find_element(By.XPATH, './/h2')
                         name = h2.text.strip()
@@ -282,7 +257,6 @@ class AfishaSeleniumParser:
                     logger.debug(f"Error processing selection element: {e}")
                     continue
 
-            # Limit number of selections
             if config.MAX_SELECTIONS_PER_CATEGORY and len(selections) > config.MAX_SELECTIONS_PER_CATEGORY:
                 selections = selections[:config.MAX_SELECTIONS_PER_CATEGORY]
                 logger.info(f"Limited to {config.MAX_SELECTIONS_PER_CATEGORY} selections")
@@ -295,29 +269,21 @@ class AfishaSeleniumParser:
             return []
 
     def parse_event_details(self, event_url: str) -> Dict:
-        """
-        Parse detailed information from individual event page
-        Returns dict with description, schedule, prices, etc.
-        """
         try:
             logger.debug(f"Parsing event details: {event_url}")
 
-            # Navigate to event page
             self.driver.get(event_url)
             self.human_like_delay(2, 3)
 
             details = {}
 
-            # H1 title
             try:
                 h1 = self.driver.find_element(By.XPATH, '//h1')
                 details['full_title'] = h1.text.strip()
             except:
                 pass
 
-            # Description
             try:
-                # Try different selectors for description
                 desc_selectors = [
                     '//div[@data-test-id="event.description"]',
                     '//div[contains(@class, "Description")]//p',
@@ -329,14 +295,13 @@ class AfishaSeleniumParser:
                         desc_elem = self.driver.find_element(By.XPATH, selector)
                         text = desc_elem.text.strip()
                         if text and len(text) > 50:
-                            details['full_description'] = text[:2000]  # Limit length
+                            details['full_description'] = text[:2000]
                             break
                     except:
                         continue
             except:
                 pass
 
-            # Prices
             try:
                 price_elements = self.driver.find_elements(
                     By.XPATH,
@@ -344,11 +309,10 @@ class AfishaSeleniumParser:
                 )
                 if price_elements:
                     prices = [p.text.strip() for p in price_elements if '₽' in p.text]
-                    details['prices'] = prices[:10]  # Limit number of prices
+                    details['prices'] = prices[:10]
             except:
                 pass
 
-            # Schedule/dates
             try:
                 schedule_elem = self.driver.find_element(
                     By.XPATH,
@@ -359,12 +323,11 @@ class AfishaSeleniumParser:
             except:
                 pass
 
-            # Times
             try:
                 time_elements = self.driver.find_elements(By.XPATH, '//time')
                 if time_elements:
                     dates = []
-                    for time_elem in time_elements[:10]:  # Limit
+                    for time_elem in time_elements[:10]:
                         datetime_attr = time_elem.get_attribute('datetime')
                         text = time_elem.text.strip()
                         if datetime_attr or text:
@@ -382,7 +345,6 @@ class AfishaSeleniumParser:
             return {}
 
     def check_for_captcha(self) -> bool:
-        """Check if CAPTCHA is present"""
         try:
             page_source = self.driver.page_source
             if 'Я не робот' in page_source or 'SmartCaptcha' in page_source:
@@ -392,20 +354,15 @@ class AfishaSeleniumParser:
             return False
 
     def wait_for_captcha_solution(self, max_wait_seconds=120, skip_if_headless=True):
-        """
-        Wait for user to solve CAPTCHA manually
-        Returns True if CAPTCHA was solved, False if timeout or skipped
-        """
         if not self.check_for_captcha():
-            return True  # No CAPTCHA, continue
+            return True
 
-        # Если headless режим и опция пропуска включена - просто пропускаем
         if skip_if_headless and self.headless:
             logger.warning("=" * 60)
             logger.warning("🔴 CAPTCHA ОБНАРУЖЕНА (headless режим)")
             logger.warning("⏭️  Пропускаю страницу с CAPTCHA")
             logger.warning("=" * 60)
-            return False  # Пропускаем страницу
+            return False
 
         logger.warning("=" * 60)
         logger.warning("🔴 CAPTCHA ОБНАРУЖЕНА!")
@@ -443,15 +400,12 @@ class AfishaSeleniumParser:
         return False
 
     def parse_events_from_page(self, category: str) -> List[Dict]:
-        """Parse events from current page"""
         events = []
 
         try:
-            self.human_like_delay(5, 8)  # Увеличиваем задержку
+            self.human_like_delay(5, 8)
 
-            # Check for CAPTCHA and wait for solution
             if self.check_for_captcha():
-                # Сохраняем скриншот
                 try:
                     import os
                     from pathlib import Path
@@ -467,73 +421,57 @@ class AfishaSeleniumParser:
                 except Exception as e:
                     logger.debug(f"Could not save screenshot: {e}")
 
-                # В headless режиме пробуем перезагрузить страницу после задержки
                 if self.headless:
                     logger.warning("CAPTCHA detected in headless mode, waiting and retrying...")
-                    time.sleep(10)  # Ждем 10 секунд
-                    self.driver.refresh()  # Перезагружаем страницу
+                    time.sleep(10)
+                    self.driver.refresh()
                     self.human_like_delay(5, 8)
-                    
-                    # Проверяем снова
+
                     if self.check_for_captcha():
                         logger.warning(f"⏭️  Пропускаю страницу с CAPTCHA для категории: {category}")
                         return events
-                
-                # Wait for user to solve CAPTCHA
+
                 if not self.wait_for_captcha_solution(max_wait_seconds=120, skip_if_headless=True):
                     logger.warning(f"⏭️  Пропускаю страницу с CAPTCHA для категории: {category}")
                     return events
 
-                # CAPTCHA solved, continue
                 self.human_like_delay(2, 3)
 
-            # Click "Show more" buttons to load all events
             logger.info("Clicking 'Show more' buttons to load all events...")
-            max_clicks = 15  # Максимум кликов
+            max_clicks = 15
             clicks_made = 0
 
             for click_num in range(max_clicks):
                 try:
-                    # Find "Show more" button
                     show_more_button = self.driver.find_element(
                         By.XPATH,
                         '//button[@data-test-id="eventsList.more" or contains(text(), "Показать ещё")]'
                     )
 
                     if show_more_button.is_displayed() and show_more_button.is_enabled():
-                        # Scroll to button
                         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", show_more_button)
                         self.human_like_delay(0.5, 1)
 
-                        # Click
                         show_more_button.click()
                         clicks_made += 1
                         logger.debug(f"Clicked 'Show more' button ({clicks_made}/{max_clicks})")
 
-                        # Wait for content to load
                         self.human_like_delay(1, 2)
                     else:
                         break
                 except:
-                    # No more "Show more" buttons
                     break
 
             if clicks_made > 0:
                 logger.info(f"✓ Clicked 'Show more' {clicks_made} times")
 
-            # Scroll to load lazy images
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             self.human_like_delay(1, 2)
 
-            # Find event elements - multiple strategies
             event_elements = []
 
-            # CORRECT selectors based on real Yandex Afisha structure
-            # Events are in cards with class DggLY9
             xpath_selectors = [
-                # Основной способ: карточки событий
                 '//div[@class="DggLY9"]',
-                # Fallback: любые элементы с data-test-id для событий
                 '//a[@data-test-id="eventCard.link"]',
             ]
 
@@ -552,7 +490,6 @@ class AfishaSeleniumParser:
 
             if not event_elements:
                 logger.warning(f"No events found for category: {category}")
-                # Save screenshot for debugging
                 try:
                     import os
                     from pathlib import Path
@@ -569,15 +506,12 @@ class AfishaSeleniumParser:
                     logger.debug(f"Could not save screenshot: {e}")
                 return events
 
-            # Track unique URLs to avoid duplicates
             seen_urls = set()
 
-            # Parse each event
             for idx, element in enumerate(event_elements[:50]):
                 try:
                     event_data = self._extract_event_data(element, category)
                     if event_data and event_data.get('url'):
-                        # Skip if already seen
                         if event_data['url'] in seen_urls:
                             logger.debug(f"Skipping duplicate URL: {event_data['url']}")
                             continue
@@ -597,7 +531,6 @@ class AfishaSeleniumParser:
         return events
 
     def _extract_event_data(self, element, category: str) -> Optional[Dict]:
-        """Extract event data from Yandex Afisha event card (DggLY9 structure)"""
         try:
             tag_name = element.tag_name.lower()
             title = None
@@ -605,33 +538,27 @@ class AfishaSeleniumParser:
             description = None
             image_url = None
 
-            # Case 1: Element is event card DIV (DggLY9)
             if tag_name == 'div':
-                # Find title: <h2 data-test-id="eventCard.eventInfoTitle">
                 try:
                     h2 = element.find_element(By.XPATH, './/h2[@data-test-id="eventCard.eventInfoTitle"]')
                     title = h2.text.strip()
                 except:
-                    # Try any h2
                     try:
                         h2 = element.find_element(By.XPATH, './/h2')
                         title = h2.text.strip()
                     except:
                         pass
 
-                # Find link: <a data-test-id="eventCard.link">
                 try:
                     link = element.find_element(By.XPATH, './/a[@data-test-id="eventCard.link"]')
                     url = link.get_attribute('href')
                 except:
-                    # Try any link
                     try:
                         link = element.find_element(By.XPATH, f'.//a[contains(@href, "/orenburg/{category}/")]')
                         url = link.get_attribute('href')
                     except:
                         pass
 
-                # Find details: <ul data-test-id="eventCard.eventInfoDetails">
                 try:
                     ul = element.find_element(By.XPATH, './/ul[@data-test-id="eventCard.eventInfoDetails"]')
                     details = [li.text.strip() for li in ul.find_elements(By.XPATH, './/li')]
@@ -639,24 +566,20 @@ class AfishaSeleniumParser:
                 except:
                     pass
 
-                # Find image
                 try:
                     img = element.find_element(By.XPATH, './/img')
                     image_url = img.get_attribute('src') or img.get_attribute('data-src')
                 except:
                     pass
 
-            # Case 2: Element is a link itself
             elif tag_name == 'a':
                 url = element.get_attribute('href')
 
-                # Try to find title in parent container
                 try:
                     container = element.find_element(By.XPATH, './ancestor::div[@class="DggLY9"]')
                     h2 = container.find_element(By.XPATH, './/h2[@data-test-id="eventCard.eventInfoTitle"]')
                     title = h2.text.strip()
 
-                    # Get details
                     try:
                         ul = container.find_element(By.XPATH, './/ul[@data-test-id="eventCard.eventInfoDetails"]')
                         details = [li.text.strip() for li in ul.find_elements(By.XPATH, './/li')]
@@ -664,14 +587,12 @@ class AfishaSeleniumParser:
                     except:
                         pass
 
-                    # Get image
                     try:
                         img = container.find_element(By.XPATH, './/img')
                         image_url = img.get_attribute('src') or img.get_attribute('data-src')
                     except:
                         pass
                 except:
-                    # Extract title from URL as fallback
                     if url:
                         parts = url.split('/')
                         for part in reversed(parts):
@@ -681,19 +602,15 @@ class AfishaSeleniumParser:
                                     title = name.replace('-', ' ').replace('_', ' ').title()
                                     break
 
-            # If still no title or URL
             else:
                 return None
 
-            # Skip if no title or URL
             if not title or not url or len(title) < 3:
                 return None
 
-            # Skip non-event links
             if any(x in url for x in ['/selections/', '/places/', '/filters']):
                 return None
 
-            # Use image_url if not already found
             if not image_url:
                 try:
                     img = element.find_element(By.TAG_NAME, 'img')
@@ -701,7 +618,6 @@ class AfishaSeleniumParser:
                 except:
                     pass
 
-            # Use description if not already found
             if not description:
                 try:
                     desc_elements = element.find_elements(By.XPATH, './/*[contains(@class, "description") or self::p]')
@@ -749,7 +665,6 @@ class AfishaSeleniumParser:
             except Exception as e:
                 logger.debug(f"Error extracting date: {e}")
 
-            # Extract price
             price = None
             try:
                 price_selectors = [
@@ -757,13 +672,12 @@ class AfishaSeleniumParser:
                     './/*[contains(text(), "₽")]',
                     './/*[contains(text(), "руб")]',
                 ]
-                
+
                 for selector in price_selectors:
                     price_elements = element.find_elements(By.XPATH, selector)
                     if price_elements:
                         for price_elem in price_elements:
                             text = price_elem.text.strip()
-                            # Проверяем, что это похоже на цену (содержит символ валюты или слово "руб")
                             if text and ('₽' in text or 'руб' in text.lower() or 'от' in text.lower()):
                                 price = text
                                 break
@@ -784,7 +698,6 @@ class AfishaSeleniumParser:
             except Exception as e:
                 logger.debug(f"Error extracting price: {e}")
 
-            # Extract venue
             venue = None
             try:
                 venue_elements = element.find_elements(By.XPATH,
@@ -812,41 +725,31 @@ class AfishaSeleniumParser:
             return None
 
     def parse_category(self, category: Dict) -> List[Dict]:
-        """Parse all events from a category (including selections)"""
         logger.info(f"Parsing category: {category['title']} ({category['url']})")
 
         all_events = []
 
         try:
-            # Navigate to category
             self.driver.get(category['url'])
             self.human_like_delay(3, 5)
 
-            # Check for CAPTCHA and wait for solution
             if self.check_for_captcha():
-                # Wait for user to solve CAPTCHA
                 if not self.wait_for_captcha_solution(max_wait_seconds=120, skip_if_headless=True):
                     logger.warning("⏭️  Пропускаю страницу с CAPTCHA")
-                    return all_events  # Возвращаем пустой список, пропускаем эту категорию
+                    return all_events
 
-                # CAPTCHA solved, continue
                 self.human_like_delay(2, 3)
 
-            # Close popups
             self.close_popups()
 
-            # Simulate human reading
             self.human_like_delay(2, 4)
 
-            # Scroll to load content
             self.scroll_page(scrolls=3)
 
-            # Parse events from main category page
             main_events = self.parse_events_from_page(category['name'])
             all_events.extend(main_events)
             logger.info(f"  Main page: {len(main_events)} events")
 
-            # Parse selections (subcategories) if enabled
             if config.PARSE_SELECTIONS:
                 logger.info(f"  Looking for selections...")
                 selections = self.get_selections(category['name'])
@@ -858,22 +761,18 @@ class AfishaSeleniumParser:
                         try:
                             logger.info(f"    Selection {sel_idx}/{len(selections)}: {selection['name']}")
 
-                            # Navigate to selection
                             self.driver.get(selection['url'])
                             self.human_like_delay(2, 3)
 
-                            # Check for CAPTCHA
                             if self.check_for_captcha():
                                 if not self.wait_for_captcha_solution(max_wait_seconds=90, skip_if_headless=True):
                                     logger.warning("⏭️  Пропускаю страницу события с CAPTCHA")
                                     continue
 
-                            # Parse events from selection
                             sel_events = self.parse_events_from_page(category['name'])
                             all_events.extend(sel_events)
                             logger.info(f"      → {len(sel_events)} events")
 
-                            # Small delay between selections
                             if sel_idx < len(selections):
                                 self.human_like_delay(2, 3)
 
@@ -883,7 +782,6 @@ class AfishaSeleniumParser:
                 else:
                     logger.info(f"  No selections found for {category['name']}")
 
-            # Parse event details if enabled
             if config.PARSE_EVENT_DETAILS and all_events:
                 logger.info(f"  Parsing event details for first {config.MAX_EVENTS_FOR_DETAILS} events...")
                 events_to_detail = all_events[:config.MAX_EVENTS_FOR_DETAILS]
@@ -892,15 +790,12 @@ class AfishaSeleniumParser:
                     try:
                         logger.info(f"    Event {evt_idx}/{len(events_to_detail)}: {event['title'][:40]}...")
 
-                        # Parse details
                         details = self.parse_event_details(event['url'])
 
-                        # Merge details into event
                         if details:
                             event.update(details)
                             logger.debug(f"      Added details: {list(details.keys())}")
 
-                        # Delay between detail requests
                         if evt_idx < len(events_to_detail):
                             self.human_like_delay(1, 2)
 
@@ -915,18 +810,14 @@ class AfishaSeleniumParser:
             return []
 
     def parse_all_events(self) -> List[Dict]:
-        """Parse events from all categories"""
         all_events = []
 
         try:
-            # Navigate to main page
             logger.info(f"Navigating to {config.BASE_URL}")
             self.driver.get(config.BASE_URL)
             self.human_like_delay(4, 6)
 
-            # Check for CAPTCHA on main page
             if self.check_for_captcha():
-                # Save screenshot
                 try:
                     import os
                     from pathlib import Path
@@ -942,32 +833,25 @@ class AfishaSeleniumParser:
                 except Exception as e:
                     logger.debug(f"Could not save screenshot: {e}")
 
-                # Wait for user to solve CAPTCHA (3 minutes for main page)
                 if not self.wait_for_captcha_solution(max_wait_seconds=180, skip_if_headless=True):
                     logger.error("Cannot continue - CAPTCHA not solved on main page")
-                    # В headless режиме просто продолжаем, возможно получится на других страницах
                     if self.headless:
                         logger.warning("⏭️  Продолжаю в headless режиме, несмотря на CAPTCHA на главной странице")
                     else:
                         raise Exception("CAPTCHA не решена на главной странице")
 
-                # CAPTCHA solved, continue
                 self.human_like_delay(3, 5)
 
-            # Close popups
             self.close_popups()
 
-            # Get categories
             categories = self.get_categories()
 
             if not categories:
                 logger.warning("No categories found")
                 return []
 
-            # Filter categories if configured
             categories_to_parse = categories
 
-            # Filter by category names if specified
             if config.CATEGORIES_TO_PARSE:
                 categories_to_parse = [
                     cat for cat in categories
@@ -979,11 +863,9 @@ class AfishaSeleniumParser:
                     return []
                 logger.info(f"Filtered to categories: {[c['name'] for c in categories_to_parse]}")
 
-            # Limit number of categories if configured
             if config.MAX_CATEGORIES and len(categories_to_parse) > config.MAX_CATEGORIES:
                 categories_to_parse = categories_to_parse[:config.MAX_CATEGORIES]
 
-            # Parse each category
             for idx, category in enumerate(categories_to_parse, 1):
                 try:
                     logger.info(f"\n{'=' * 60}")
@@ -994,7 +876,6 @@ class AfishaSeleniumParser:
                     all_events.extend(events)
                     logger.info(f"✓ '{category['title']}': {len(events)} events")
 
-                    # Delay between categories
                     if idx < len(categories_to_parse):
                         delay = random.uniform(
                             config.MIN_DELAY_BETWEEN_CATEGORIES,

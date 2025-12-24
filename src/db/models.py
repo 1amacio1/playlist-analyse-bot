@@ -1,15 +1,14 @@
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Column, String, DateTime, Text, Index, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
 
 Base = declarative_base()
 
-
 class Event(Base):
     __tablename__ = 'events'
-    
+
     id = Column(String, primary_key=True)
     url = Column(String, unique=True, nullable=False, index=True)
     title = Column(String, nullable=True)
@@ -25,9 +24,9 @@ class Event(Base):
     matched_artist = Column(String, nullable=True)
     scraped_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), 
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    
+
     __table_args__ = (
         Index('idx_category', 'category'),
         Index('idx_date', 'date'),
@@ -35,7 +34,7 @@ class Event(Base):
         Index('idx_source', 'source'),
         UniqueConstraint('url', name='uq_events_url'),
     )
-    
+
     def to_dict(self) -> dict:
         return {
             'id': self.id,
@@ -55,13 +54,13 @@ class Event(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'Event':
         import hashlib
         url = data.get('url', '')
         event_id = hashlib.md5(url.encode()).hexdigest() if url else None
-        
+
         event = cls(
             id=event_id,
             url=url,
@@ -77,12 +76,12 @@ class Event(Base):
             artist_name=data.get('artist_name'),
             matched_artist=data.get('matched_artist'),
         )
-        
+
         if 'scraped_at' in data and data['scraped_at']:
             if isinstance(data['scraped_at'], str):
                 event.scraped_at = datetime.fromisoformat(data['scraped_at'].replace('Z', '+00:00'))
             else:
                 event.scraped_at = data['scraped_at']
-        
+
         return event
 

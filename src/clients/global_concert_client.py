@@ -1,4 +1,3 @@
-# src/clients/global_concert_client.py
 import os
 import sys
 import time
@@ -12,7 +11,6 @@ from typing import List, Dict
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-# Add project root and src to path
 project_root = Path(__file__).parent.parent.parent
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -23,7 +21,6 @@ from src.config.settings import config
 
 load_dotenv()
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -33,7 +30,6 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("TICKETMASTER_API_TOKEN")
 BASE_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 
-# MongoDB settings for artists
 ARTISTS_DB = "artists_db"
 ARTISTS_COLLECTION = "big_artists"
 
@@ -62,7 +58,6 @@ def get_artist_events(
 
     headers = {"User-Agent": "Mozilla/5.0 (Ticketmaster Collector Bot)"}
 
-    # Use proxy for Ticketmaster API requests
     proxies = config.proxies_dict
     if proxies:
         logger.info(f"Using proxy for Ticketmaster: {config.PROXY_HOST}:{config.PROXY_PORT}")
@@ -103,9 +98,7 @@ def get_artist_events(
 
     return []
 
-
 def get_artists_from_db() -> List[str]:
-    """Get list of artists from MongoDB"""
     try:
         client = MongoClient(config.mongo_uri)
         db = client[ARTISTS_DB]
@@ -117,9 +110,7 @@ def get_artists_from_db() -> List[str]:
         logger.error(f"Error getting artists from DB: {e}")
         return []
 
-
 def convert_ticketmaster_to_afisha_format(event: Dict) -> Dict:
-    """Convert Ticketmaster event format to Afisha DB format"""
     return {
         "title": event.get("event_name", "-"),
         "url": event.get("url", "-"),
@@ -133,72 +124,67 @@ def convert_ticketmaster_to_afisha_format(event: Dict) -> Dict:
         "source": "ticketmaster"
     }
 
-
 def process_artists(artists: List[str], limit: int = None) -> tuple:
-    """Process artists and save events to database"""
     if not API_TOKEN:
         logger.error("TICKETMASTER_API_TOKEN is not set")
         return 0, 0
-    
+
     db = ConcertRepository()
     artists_to_process = artists[:limit] if limit else artists
     total_events = 0
     total_saved = 0
-    
+
     logger.info(f"Processing {len(artists_to_process)} artists...")
-    
+
     for i, artist in enumerate(artists_to_process, 1):
         try:
             logger.info(f"[{i}/{len(artists_to_process)}] Fetching events for: {artist}")
             events = get_artist_events(artist)
-            
+
             if events:
                 saved_count = 0
                 for event in events:
                     afisha_event = convert_ticketmaster_to_afisha_format(event)
                     if db.save_event(afisha_event):
                         saved_count += 1
-                
+
                 total_events += len(events)
                 total_saved += saved_count
                 logger.info(f"  Found {len(events)} events, saved {saved_count} new")
             else:
                 logger.info(f"  No events found")
-            
-            # Rate limiting - wait between requests
+
             if i < len(artists_to_process):
                 time.sleep(1.1)
-                
+
         except Exception as e:
             logger.error(f"Error processing {artist}: {e}")
             continue
-    
+
     db.close()
     return total_events, total_saved
 
-
 def run_ticketmaster_update(limit: int = None):
-    """Run single update of Ticketmaster events"""
     logger.info("=" * 60)
     logger.info("Ticketmaster Event Updater")
     logger.info("=" * 60)
-    
+
     artists = get_artists_from_db()
     if not artists:
-        logger.warning("No artists found in database. Run load_artists.py first.")
+        logger.warning("No artists found in database. Run src/scripts/load_artists.py first.")
         return
-    
+
     logger.info(f"Found {len(artists)} artists in database")
-    
+
     initial_count = ConcertRepository().count_events_by_category('concert')
     ConcertRepository().close()
     logger.info(f"Current concerts in database: {initial_count}")
-    
+
     total_events, total_saved = process_artists(artists, limit=limit)
-    
+
     final_count = ConcertRepository().count_events_by_category('concert')
     ConcertRepository().close()
-    
+
     logger.info("\n" + "=" * 60)
     logger.info("FINAL SUMMARY")
     logger.info("=" * 60)
@@ -211,9 +197,7 @@ def run_ticketmaster_update(limit: int = None):
     logger.info(f"New concerts added: {final_count - initial_count}")
     logger.info("=" * 60)
 
-
 def run_scheduled_updates(interval_seconds: int, artists_limit: int = DEFAULT_SCHEDULED_ARTISTS_LIMIT):
-    """Run Ticketmaster updates periodically with specified interval"""
     logger.info("=" * 60)
     logger.info("Starting scheduled Ticketmaster updates")
     logger.info(f"Interval: {interval_seconds / 3600:.1f} hours ({interval_seconds} seconds)")
@@ -221,9 +205,9 @@ def run_scheduled_updates(interval_seconds: int, artists_limit: int = DEFAULT_SC
     logger.info("=" * 60)
     logger.info("Press Ctrl+C to stop")
     logger.info("=" * 60)
-    
+
     iteration = 0
-    
+
     try:
         while True:
             iteration += 1
@@ -232,7 +216,7 @@ def run_scheduled_updates(interval_seconds: int, artists_limit: int = DEFAULT_SC
             logger.info(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"Processing {artists_limit} artists")
             logger.info("=" * 60)
-            
+
             try:
                 run_ticketmaster_update(limit=artists_limit)
                 logger.info(f"\n✓ Run #{iteration} completed successfully")
@@ -242,30 +226,26 @@ def run_scheduled_updates(interval_seconds: int, artists_limit: int = DEFAULT_SC
             except Exception as e:
                 logger.error(f"\n✗ Run #{iteration} failed: {e}", exc_info=True)
                 logger.info("Continuing with next scheduled run...")
-            
-            # Calculate next run time
+
             next_run = datetime.fromtimestamp(time.time() + interval_seconds)
             logger.info("\n" + "=" * 60)
             logger.info(f"Next run scheduled for: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"Waiting {interval_seconds / 3600:.1f} hours...")
             logger.info("=" * 60)
-            
-            # Wait for next iteration
+
             time.sleep(interval_seconds)
-            
+
     except KeyboardInterrupt:
         logger.info("\n" + "=" * 60)
         logger.info("Scheduled updates stopped by user")
         logger.info("=" * 60)
 
-
 def main():
-    """Main function with CLI arguments"""
     parser = argparse.ArgumentParser(
         description='Update concerts from Ticketmaster API',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    
+
     parser.add_argument(
         '--schedule',
         action='store_true',
@@ -282,20 +262,17 @@ def main():
         type=int,
         help=f'Limit number of artists to process (default: {DEFAULT_USER_ARTISTS_LIMIT} for single run, {DEFAULT_SCHEDULED_ARTISTS_LIMIT} for scheduled)'
     )
-    
+
     args = parser.parse_args()
-    
-    # Scheduled mode
+
     if args.schedule:
         interval_seconds = args.interval * 3600
         artists_limit = args.limit if args.limit else DEFAULT_SCHEDULED_ARTISTS_LIMIT
         run_scheduled_updates(interval_seconds, artists_limit=artists_limit)
         return
-    
-    # Single run mode
+
     artists_limit = args.limit if args.limit else DEFAULT_USER_ARTISTS_LIMIT
     run_ticketmaster_update(limit=artists_limit)
-
 
 if __name__ == '__main__':
     main()

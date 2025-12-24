@@ -1,0 +1,19 @@
+[run]
+omit = 
+    */scripts/*
+    */bot/main.py
+    */main.py
+    */clients/local_concert_client.py
+    */venv/*
+    */tests/*
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod

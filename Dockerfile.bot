@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копирование requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Копирование кода
+COPY src/ ./src/
+
+# Создание директории для логов
+RUN mkdir -p /app/logs
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+CMD ["python", "-m", "src.bot.main"]
+

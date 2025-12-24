@@ -120,3 +120,67 @@ def test_find_concerts_wrong_city(service, repo):
     ]
     res = service.find_concerts_for_artists(['Test Artist'])
     assert 'Test Artist' not in res
+
+def test_find_artist_three_words_two_found(service):
+    res = service.find_artist_in_text('Test Artist Name', 'Concert Test Name')
+    assert res is True
+
+def test_find_artist_three_words_one_found(service):
+    res = service.find_artist_in_text('Test Artist Name', 'Concert Test')
+    assert res is False
+
+def test_find_artist_single_word_three_chars(service):
+    res = service.find_artist_in_text('ABC', 'Concert ABC')
+    assert res is False
+
+def test_find_artist_single_word_four_chars(service):
+    res = service.find_artist_in_text('ABCD', 'Concert ABCD')
+    assert res is True
+
+def test_find_concerts_no_title_no_full_title(service, repo):
+    repo.get_events_by_category.return_value = [
+        {'url': 'https://afisha.yandex.ru/moscow/1', 'title': '', 'full_title': '', 'description': 'Long description with Test Artist name'}
+    ]
+    res = service.find_concerts_for_artists(['Test Artist'])
+    assert 'Test Artist' in res
+
+def test_find_artist_two_words_exact_positions(service):
+    text = 'Concert Test ' + 'x' * 50 + ' Artist'
+    res = service.find_artist_in_text('Test Artist', text)
+    assert res is True
+
+def test_find_artist_two_words_far_positions(service):
+    text = 'Concert Test ' + 'x' * 150 + ' Artist'
+    res = service.find_artist_in_text('Test Artist', text)
+    assert res is False
+
+def test_find_artist_three_words_two_found(service):
+    res = service.find_artist_in_text('Test Artist Name', 'Concert Test Name')
+    assert res is True
+
+def test_find_artist_three_words_one_found(service):
+    res = service.find_artist_in_text('Test Artist Name', 'Concert Test')
+    assert res is False
+
+def test_find_artist_single_word_three_chars(service):
+    res = service.find_artist_in_text('ABC', 'Concert ABC')
+    assert res is False
+
+def test_find_artist_single_word_four_chars(service):
+    res = service.find_artist_in_text('ABCD', 'Concert ABCD')
+    assert res is True
+
+def test_find_concerts_no_title_no_full_title(service, repo):
+    repo.get_events_by_category.return_value = [
+        {'url': 'https://afisha.yandex.ru/moscow/1', 'title': '', 'full_title': '', 'description': 'Long description with Test Artist name'}
+    ]
+    res = service.find_concerts_for_artists(['Test Artist'])
+    assert 'Test Artist' in res
+
+def test_find_artist_single_word_four_chars_not_found(service):
+    res = service.find_artist_in_text('ABCD', 'Concert XYZ')
+    assert res is False
+
+def test_find_artist_single_word_four_chars_found(service):
+    res = service.find_artist_in_text('ABCD', 'Concert ABCD')
+    assert res is True

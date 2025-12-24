@@ -3,14 +3,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class Config:
     DB_HOST = os.getenv('DB_HOST', 'localhost')
     DB_PORT = int(os.getenv('DB_PORT', 5432))
     DB_USERNAME = os.getenv('DB_USERNAME', 'postgres')
     DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
     DB_NAME = os.getenv('DB_NAME', 'afisha_db')
-    
+
     MONGO_HOST = os.getenv('MONGO_HOST', 'localhost')
     MONGO_PORT = int(os.getenv('MONGO_PORT', 27017))
     MONGO_USERNAME = os.getenv('MONGO_USERNAME', 'admin')
@@ -19,7 +18,7 @@ class Config:
 
     HEADLESS = os.getenv('HEADLESS', 'true').lower() == 'true'
     CITY = os.getenv('CITY', 'orenburg')
-    
+
     @property
     def BASE_URL(self):
         return f'https://afisha.yandex.ru/{self.CITY}'
@@ -51,13 +50,13 @@ class Config:
     PROXY_PORT = os.getenv('PROXY_PORT', '')
     PROXY_USERNAME = os.getenv('PROXY_USERNAME', '')
     PROXY_PASSWORD = os.getenv('PROXY_PASSWORD', '')
-    
+
     @property
     def proxy_url(self):
         if not all([self.PROXY_HOST, self.PROXY_PORT, self.PROXY_USERNAME, self.PROXY_PASSWORD]):
             return None
         return f"http://{self.PROXY_USERNAME}:{self.PROXY_PASSWORD}@{self.PROXY_HOST}:{self.PROXY_PORT}"
-    
+
     @property
     def proxies_dict(self):
         proxy_url = self.proxy_url
@@ -71,6 +70,5 @@ class Config:
     @property
     def mongo_uri(self):
         return f"mongodb://{self.MONGO_USERNAME}:{self.MONGO_PASSWORD}@{self.MONGO_HOST}:{self.MONGO_PORT}/"
-
 
 config = Config()

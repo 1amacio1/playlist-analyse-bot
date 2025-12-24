@@ -38,14 +38,11 @@ bot = Bot(token=os.getenv("BOT_TOKEN"))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-
 class PlaylistStates(StatesGroup):
     waiting_for_url = State()
     processing = State()
 
-
 user_results = {}
-
 
 @dp.message(Command(commands="start"))
 async def start_command(message: Message):
@@ -54,7 +51,6 @@ async def start_command(message: Message):
         "Отправьте мне ссылку на публичный плейлист (можно в формате HTML-кода с iframe), "
         "и я найду концерты ваших любимых артистов!"
     )
-
 
 @dp.message(Command(commands="help"))
 async def help_command(message: Message):
@@ -70,41 +66,33 @@ async def help_command(message: Message):
         "• <iframe src='https://music.yandex.ru/iframe/#playlist/USERNAME/12345'>...</iframe>"
     )
 
-
 @dp.message(F.text | F.html)
 async def handle_playlist_message(message: Message, state: FSMContext):
     await handle_playlist_url(message, state, user_results)
-
 
 @dp.callback_query(F.data.startswith("city_"))
 async def handle_city_callback(callback):
     await handle_city_selection(callback, user_results)
 
-
 @dp.callback_query(F.data.startswith("sort_"))
 async def handle_sort_callback(callback):
     await handle_sort(callback, user_results)
-
 
 @dp.callback_query(F.data.startswith("page_"))
 async def handle_page_callback(callback):
     await handle_pagination(callback, user_results)
 
-
 @dp.callback_query(F.data.startswith("remind_"))
 async def handle_reminder_callback(callback):
     await handle_reminder(callback, user_results)
-
 
 @dp.callback_query(F.data == "recommendations")
 async def handle_recommendations_callback(callback):
     await handle_recommendations(callback, user_results)
 
-
 @dp.callback_query(F.data == "refresh")
 async def handle_refresh_callback(callback):
     await handle_refresh(callback, user_results)
-
 
 @dp.message()
 async def handle_other_messages(message: Message):
@@ -113,11 +101,9 @@ async def handle_other_messages(message: Message):
         "Используйте /help для получения инструкций."
     )
 
-
 async def main():
     logger.info("Запуск бота...")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     try:
